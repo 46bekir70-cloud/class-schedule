@@ -1,9 +1,18 @@
 (function () {
   const ECAMPUS = 'https://ecampus.ius.edu.ba';
-  const CATALOG = window.COURSE_DATA || { courses: {}, staff: {} };
+  // Starts with the copy bundled in the APK; refreshCatalog() swaps in the nightly eCampus data when online.
+  let CATALOG = window.COURSE_DATA || { courses: {}, staff: {} };
+  const LIVE_DATA = 'https://hasankaan28.github.io/class-schedule/data/courses.js';
   const I18N = window.I18N;
   const PALETTE_SIZE = 8;
   const FORM_DAYS = [1, 2, 3, 4, 5, 6];
+  // Personal entries that are not courses: no eCampus card, no ECTS, a fixed colour, free-text names and a plan note.
+  const EVENT_TYPES = ['gym'];
+  const FORM_TYPES = ['lec', 'tut', 'lab'].concat(EVENT_TYPES);
+  const isEvent = c => EVENT_TYPES.includes(c.t);
+
+  // Filled in on first launch so the personal build opens with the timetable and gym days already in place.
+  const SEED_CLASSES = window.SEED_CLASSES || [];
 
   // A ?now=2026-10-19T12:30 query pins the clock, for previewing a moment in a desktop browser.
   const pinned = new Date(new URLSearchParams(location.search).get('now') || NaN);
@@ -49,12 +58,39 @@
   };
 
   function loadClasses() {
+    // A missing key can come back as null or undefined depending on the WebView, so check for "nothing stored" loosely.
+    // The flag makes sure the timetable is filled in once and is never restored after the student empties it.
+    if (store.get('seeded') !== '1') {
+      let existing = [];
+      try { existing = JSON.parse(store.get('classes') || '[]'); } catch (e) { /* treat as empty */ }
+      store.set('seeded', '1');
+      if (!Array.isArray(existing) || !existing.length) {
+        store.set('classes', JSON.stringify(SEED_CLASSES));
+        return SEED_CLASSES.map(c => Object.assign({}, c));
+      }
+    }
+    let list;
     try {
-      const list = JSON.parse(store.get('classes') || '[]');
-      return Array.isArray(list) ? list : [];
+      list = JSON.parse(store.get('classes') || '[]');
     } catch (e) {
       return [];
     }
+    if (!Array.isArray(list)) return [];
+    return migrate(list);
+  }
+
+  // One-off updates to a timetable saved by an older build: the prayer type was removed,
+  // and the built-in gym days got their workout plan as a note.
+  function migrate(list) {
+    if (store.get('migrated') === '2') return list;
+    const seedNote = Object.fromEntries(SEED_CLASSES.filter(c => c.note).map(c => [`${c.d}|${c.s}|${c.code}`, c.note]));
+    const out = list.filter(c => c.t !== 'pray').map(c => {
+      const note = c.t === 'gym' && !c.note ? seedNote[`${c.d}|${c.s}|${c.code}`] : null;
+      return note ? Object.assign({}, c, { note }) : c;
+    });
+    store.set('classes', JSON.stringify(out));
+    store.set('migrated', '2');
+    return out;
   }
   function loadSettings() {
     try {
@@ -80,13 +116,27 @@
   const nameOf = c => (info(c.code) || {}).n || c.name || '';
   const sorted = list => [...list].sort((a, b) => a.d - b.d || toMin(a.s) - toMin(b.s));
   const byDay = d => sorted(state.classes.filter(c => c.d === d));
+  const courses = () => state.classes.filter(c => !isEvent(c));
+  const noteLines = note => String(note || '').split(/\n|\s·\s/).map(l => l.trim()).filter(Boolean);
+  // "Bench Press 4×6-8" -> exercise on the left, sets on the right.
+  function noteHtml(note) {
+    const rows = noteLines(note).map(line => {
+      const m = line.match(/^(.*?)\s+(\d+\s*[×x]\s*\S.*)$/);
+      return m ? `<li><span>${esc(m[1])}</span><b>${esc(m[2])}</b></li>` : `<li><span>${esc(line)}</span></li>`;
+    });
+    return rows.length ? `<ul class="note">${rows.join('')}</ul>` : '';
+  }
+  // Lectures and personal entries are solid; tutorials and labs are striped.
+  const altCls = c => c.t === 'lec' || isEvent(c) ? '' : 'alt';
   const classLabel = c => `${c.code}${c.sec ? '.' + c.sec : ''}`;
   const typeTag = c => c.t === 'lec' ? '' : `<span class="tag">${esc(T().types[c.t] || c.t)}</span>`;
   const ecampusUrl = code => { const i = info(code); return i && i.url ? ECAMPUS + i.url : null; };
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   function colorClass(code) {
-    const codes = [...new Set(sorted(state.classes).map(c => c.code))];
+    const ev = state.classes.find(c => c.code === code && isEvent(c));
+    if (ev) return `k-${ev.t}`;
+    const codes = [...new Set(sorted(courses()).map(c => c.code))];
     return `k${Math.max(0, codes.indexOf(code)) % PALETTE_SIZE}`;
   }
 
@@ -188,9 +238,9 @@
       const live = d === day && min >= toMin(c.s) && !past;
       const meta = [c.room, c.who].filter(Boolean).map(esc).join(' · ');
       const inner = `<span class="top"><span class="code">${esc(classLabel(c))}</span>${typeTag(c)}</span>
-        <span class="nm">${esc(nameOf(c))}</span>${meta ? `<span class="meta">${meta}</span>` : ''}`;
+        <span class="nm">${esc(nameOf(c))}</span>${meta ? `<span class="meta">${meta}</span>` : ''}${noteHtml(c.note)}`;
       return `${gap >= 30 ? `<li class="gap"><span>${t.free} · ${fmtDur(gap)}</span></li>` : ''}
-        <li class="item ${c.t === 'lec' ? '' : 'alt'} ${colorClass(c.code)}${past ? ' past' : ''}${live ? ' live' : ''}">
+        <li class="item ${altCls(c)} ${colorClass(c.code)}${past ? ' past' : ''}${live ? ' live' : ''}">
           <div class="time"><b>${c.s}</b><span>${c.e}</span></div>
           ${classLink(c, 'card', inner)}
         </li>`;
@@ -217,9 +267,9 @@
 
   function renderWeek() {
     const t = T(), { day, min } = clock(), days = shownDays();
-    const codes = [...new Set(state.classes.map(c => c.code))];
+    const codes = [...new Set(courses().map(c => c.code))];
     const ects = codes.reduce((sum, code) => sum + ((info(code) || {}).ects || 0), 0);
-    const total = state.classes.reduce((sum, c) => sum + dur(c), 0);
+    const total = courses().reduce((sum, c) => sum + dur(c), 0);
     $('summary').textContent = state.classes.length ? t.summary(codes.length, ects, fmtDur(total)) : '';
 
     const start = Math.min(9 * 60, ...state.classes.map(c => Math.floor(toMin(c.s) / 60) * 60));
@@ -243,7 +293,7 @@
       list.forEach(c => {
         const style = `top:calc(var(--slot) * ${(toMin(c.s) - start) / 10}); height:calc(var(--slot) * ${dur(c) / 10} - 2px)`;
         const inner = `<span class="code">${esc(c.code)}</span>${c.room ? `<span class="room">${esc(c.room)}</span>` : ''}`;
-        html += classLink(c, `blk ${c.t === 'lec' ? '' : 'alt'} ${colorClass(c.code)}`, inner, style);
+        html += classLink(c, `blk ${altCls(c)} ${colorClass(c.code)}`, inner, style);
       });
       if (d === day && min >= start && min <= end) {
         html += `<span class="now" style="top:calc(var(--slot) * ${(min - start) / 10})"></span>`;
@@ -323,7 +373,7 @@
 
   function renderCourses() {
     const t = T();
-    const codes = [...new Set(sorted(state.classes).map(c => c.code))];
+    const codes = [...new Set(sorted(courses()).map(c => c.code))];
     $('courseList').innerHTML = codes.map(courseCard).join('');
     const fmt = value => new Intl.DateTimeFormat(t.locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value));
     const parts = [];
@@ -387,7 +437,7 @@
   // Course code -> sections the student entered (empty set: any section).
   function myCourseSections() {
     const map = new Map();
-    state.classes.forEach(c => {
+    courses().forEach(c => {
       const code = (c.code.match(QUIZ_COURSE) || [c.code])[0];
       if (!map.has(code)) map.set(code, new Set());
       if (c.sec) map.get(code).add(String(c.sec).toUpperCase());
@@ -600,7 +650,7 @@
 
   function openReport() {
     const t = T(), today = nowDate();
-    const codes = [...new Set(sorted(state.classes).map(c => c.code))];
+    const codes = [...new Set(sorted(courses()).map(c => c.code))];
     $('qCourse').innerHTML = codes.map(c => `<option value="${esc(c)}">${esc(c)}${info(c) ? ' · ' + esc(info(c).n) : ''}</option>`).join('')
       + `<option value="">${t.otherCourse}</option>`;
     $('qCourse').value = codes[0] || '';
@@ -690,6 +740,7 @@
 
   // "cs 103.2" -> CS103 + section 2, unless the full text is itself a course code (e.g. ENS208-6).
   function readCode() {
+    if (EVENT_TYPES.includes(state.form.t)) return { code: $('fCode').value.trim(), sec: '' };
     const raw = $('fCode').value.toUpperCase().replace(/\s+/g, '');
     if (info(raw)) return { code: raw, sec: '' };
     const match = raw.match(/^([A-Z]+\d+[A-Z]?)[.\-](\w+)$/);
@@ -698,12 +749,22 @@
 
   function renderSegments() {
     const t = T();
-    $('fType').innerHTML = ['lec', 'tut', 'lab'].map(v => `<button type="button" data-type="${v}" aria-pressed="${state.form.t === v}">${t.types[v]}</button>`).join('');
+    $('fType').innerHTML = FORM_TYPES.map(v => `<button type="button" data-type="${v}" aria-pressed="${state.form.t === v}">${t.types[v]}</button>`).join('');
+    $('fNoteWrap').hidden = !EVENT_TYPES.includes(state.form.t);
+    $('fCode').classList.toggle('free', EVENT_TYPES.includes(state.form.t)); // gym names keep their own casing
     $('fDay').innerHTML = FORM_DAYS.map(d => `<button type="button" data-fday="${d}" aria-pressed="${state.form.d === d}">${dayShort(d)}</button>`).join('');
   }
 
   function onCodeInput(suggest) {
     const t = T(), { code } = readCode(), i = info(code);
+    if (EVENT_TYPES.includes(state.form.t)) {
+      // Gym and prayer entries are free text: no catalogue lookup, but keep the long name field open.
+      $('codeSuggest').hidden = true;
+      $('fCourseName').textContent = '';
+      $('fNameWrap').hidden = false;
+      $('sectionPicker').hidden = true;
+      return;
+    }
     const query = $('fCode').value.toUpperCase().replace(/\s+/g, ''), queryName = norm($('fCode').value);
     const list = $('codeSuggest');
     let hits = [];
@@ -761,6 +822,7 @@
     $('fRoom').value = c && c.room ? c.room : '';
     $('fSection').value = c && c.sec ? c.sec : '';
     $('fWho').value = c && c.who ? c.who : '';
+    $('fNote').value = c && c.note ? c.note : '';
     const del = $('fDelete');
     del.hidden = !c;
     del.textContent = t.delete;
@@ -789,6 +851,7 @@
       e,
       room: $('fRoom').value.trim(),
       who: $('fWho').value.trim(),
+      note: EVENT_TYPES.includes(state.form.t) ? $('fNote').value.trim() : '',
       name: info(code) ? '' : $('fName').value.trim()
     };
     Object.keys(entry).forEach(k => { if (entry[k] === '') delete entry[k]; });
@@ -821,10 +884,11 @@
       state.classes.forEach(c => {
         let day = c.d, min = toMin(c.s) - s.lead;
         if (min < 0) { min += 1440; day = day === 1 ? 7 : day - 1; }
+        // "lead" lets the app show a live countdown to the start instead of a fixed "in 15 min".
         list.push({
-          day, min,
-          title: t.reminderTitle(classLabel(c), c.t === 'lec' ? '' : t.types[c.t], s.lead),
-          body: [nameOf(c), `${c.s}–${c.e}`, c.room].filter(Boolean).join(' · ')
+          day, min, lead: s.lead,
+          title: t.reminderStart(classLabel(c), c.t === 'lec' ? '' : t.types[c.t]),
+          body: [nameOf(c), `${c.s}–${c.e}`, c.room].filter(Boolean).join(' · ') + (c.note ? '\n' + noteLines(c.note).map(l => '• ' + l).join('\n') : '')
         });
       });
     }
@@ -962,7 +1026,7 @@
       return onCodeInput(false);
     }
     if (d.sec) return pickSection(Number(d.sec));
-    if (d.type) { state.form.t = d.type; return renderSegments(); }
+    if (d.type) { state.form.t = d.type; renderSegments(); return onCodeInput(false); }
     if (d.fday) { state.form.d = Number(d.fday); renderSegments(); return updateWarning(); }
     if (el.id === 'fCancel') return closeDialog($('editor'));
     if (el.id === 'fDelete') return deleteFromEditor();
@@ -1003,11 +1067,35 @@
     }
   };
 
-  $('staffList').innerHTML = Object.keys(CATALOG.staff || {}).map(n => `<option value="${esc(n)}">`).join('');
+  const renderStaffList = () => {
+    $('staffList').innerHTML = Object.keys(CATALOG.staff || {}).map(n => `<option value="${esc(n)}">`).join('');
+  };
+
+  // The personal build opens the bundled page, so the course data in it is frozen at build time.
+  // The original site is updated from eCampus every night; load that file and use it if it is newer.
+  function refreshCatalog() {
+    const bundled = CATALOG;
+    const script = document.createElement('script');
+    script.src = `${LIVE_DATA}?t=${Date.now()}`;
+    script.onload = () => {
+      const fresh = window.COURSE_DATA;
+      script.remove();
+      if (!fresh || fresh === bundled || !fresh.courses) return;
+      if (bundled.generated && fresh.generated && fresh.generated < bundled.generated) return;
+      CATALOG = fresh;
+      renderStaffList();
+      renderAll();
+    };
+    script.onerror = () => script.remove(); // offline: keep the bundled copy
+    document.head.appendChild(script);
+  }
+
+  renderStaffList();
   applyTheme();
   setLang(state.lang);
   setTab('today');
   loadQuizzes(false);
+  refreshCatalog();
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* the app still works without offline caching */ });

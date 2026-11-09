@@ -10,7 +10,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.github.hasankaan28.classschedule"
+        // Own id so this personal build installs next to the original app instead of replacing it.
+        applicationId = "io.github.hasankaan28.classschedule.kisisel"
         minSdk = 26
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()

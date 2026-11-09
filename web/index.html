@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#151E29" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Weekly class schedule for IUS students, with course details from eCampus. Unofficial.">
-<title>Class Schedule</title>
+<title>Class Schedule+</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
@@ -26,7 +26,7 @@
       <img src="brand/iec-logo.png" width="32" height="32" alt="IUS Engineering Club">
     </a>
     <div class="titles">
-      <h1 data-i18n="appTitle">Class Schedule</h1>
+      <h1 data-i18n="appTitle">Class Schedule+</h1>
       <p class="term" data-i18n="appSub"></p>
     </div>
   </div>
@@ -220,6 +220,10 @@
       <input id="fWho" list="staffList" autocomplete="off">
     </label>
     <datalist id="staffList"></datalist>
+    <label class="field" id="fNoteWrap" hidden>
+      <span data-i18n="fNote"></span>
+      <textarea id="fNote" rows="4" placeholder="Bench Press 4×6-8 · ..."></textarea>
+    </label>
 
     <p class="warn" id="fWarn" hidden></p>
     <p class="error" id="fError" role="alert" hidden></p>
@@ -233,6 +237,7 @@
 </dialog>
 
 <script src="data/courses.js"></script>
+<script src="data/seed.js"></script>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>

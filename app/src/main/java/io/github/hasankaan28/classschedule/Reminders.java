@@ -62,7 +62,14 @@ final class Reminders {
         if (entry == null) {
             return;
         }
-        post(context, index, entry.optString("title"), entry.optString("body"));
+        // Class reminders carry "lead" (minutes before the start): the notification then counts down live to the start.
+        long start = 0;
+        int lead = entry.optInt("lead", 0);
+        if (lead > 0) {
+            long scheduled = nextTime(entry, System.currentTimeMillis() - 30 * 60_000L);
+            start = scheduled + lead * 60_000L;
+        }
+        post(context, index, entry.optString("title"), entry.optString("body"), start);
         // A minute ahead, so a slightly early alarm does not land on today again.
         arm(context, context.getSystemService(AlarmManager.class), index, nextTime(entry, System.currentTimeMillis() + 60_000));
     }
@@ -74,21 +81,30 @@ final class Reminders {
         context.getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 
-    private static void post(Context context, int index, String title, String body) {
+    private static void post(Context context, int index, String title, String body, long start) {
         createChannel(context);
         Intent open = new Intent(context, MainActivity.class)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent tap = PendingIntent.getActivity(
                 context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification notification = new Notification.Builder(context, CHANNEL_ID)
+        Notification.Builder builder = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_class)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(tap)
-                .setAutoCancel(true)
-                .build();
+                .setAutoCancel(true);
+        if (start > 0) {
+            // The system ticks the timer down by itself, so the minutes left are always current.
+            long now = System.currentTimeMillis();
+            builder.setWhen(start)
+                    .setShowWhen(true)
+                    .setUsesChronometer(true)
+                    .setChronometerCountDown(true)
+                    .setTimeoutAfter(Math.max(start - now, 0) + 60_000L); // gone a minute after the start
+        }
+        Notification notification = builder.build();
         try {
             context.getSystemService(NotificationManager.class).notify(NOTIFICATION_BASE + index, notification);
         } catch (SecurityException ignored) {

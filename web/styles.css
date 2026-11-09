@@ -15,6 +15,7 @@
   --warn-ink: #7A4A00;
   --p0: #D9480F; --p1: #1C7ED6; --p2: #7048E8; --p3: #2B8A3E;
   --p4: #C2255C; --p5: #0B7285; --p6: #B07D00; --p7: #9C5B2E;
+  --gym: #E03131; /* gym days: a red no course gets, filled solid */
   --f-display: "sans-serif-condensed", "Roboto Condensed", "Arial Narrow", sans-serif;
   --f-body: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
   --slot: 9px; /* one 10-minute row in the week grid */
@@ -27,6 +28,7 @@
     --danger: #FF8787; --warn-bg: #3A2C12; --warn-ink: #FFD8A8;
     --p0: #FF8A4C; --p1: #5AAAF2; --p2: #A994FB; --p3: #5DC876;
     --p4: #F2709C; --p5: #3BC9DB; --p6: #FFC234; --p7: #D9A066;
+    --gym: #FF6B6B;
     color-scheme: dark;
   }
 }
@@ -36,6 +38,7 @@
   --danger: #FF8787; --warn-bg: #3A2C12; --warn-ink: #FFD8A8;
   --p0: #FF8A4C; --p1: #5AAAF2; --p2: #A994FB; --p3: #5DC876;
   --p4: #F2709C; --p5: #3BC9DB; --p6: #FFC234; --p7: #D9A066;
+  --gym: #FF6B6B;
   color-scheme: dark;
 }
 
@@ -55,6 +58,16 @@ a { color: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .k0 { --c: var(--p0); } .k1 { --c: var(--p1); } .k2 { --c: var(--p2); } .k3 { --c: var(--p3); }
 .k4 { --c: var(--p4); } .k5 { --c: var(--p5); } .k6 { --c: var(--p6); } .k7 { --c: var(--p7); }
+/* Gym days: their own red, but as soft as the course colours; the workout plan is a list with sets on the right. */
+.k-gym { --c: var(--gym); }
+.blk.k-gym { background: color-mix(in srgb, var(--c) 26%, var(--surface)); border-color: color-mix(in srgb, var(--c) 55%, transparent); }
+.item.k-gym .card { background: color-mix(in srgb, var(--c) 12%, var(--surface)); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.card .note { list-style: none; margin: 8px 0 0; padding: 8px 0 0; display: grid; gap: 4px; border-top: 1px solid color-mix(in srgb, var(--c) 25%, transparent); font-size: 13px; line-height: 1.35; }
+.card .note li { display: flex; justify-content: space-between; gap: 10px; }
+.card .note li::before { content: ""; flex: none; width: 5px; height: 5px; margin-top: .5em; border-radius: 50%; background: var(--c); }
+.card .note span { flex: 1; min-width: 0; color: var(--ink); }
+.card .note b { flex: none; font-weight: 600; color: color-mix(in srgb, var(--c) 70%, var(--ink)); font-variant-numeric: tabular-nums; }
+textarea { font: inherit; color: inherit; resize: vertical; }
 
 /* Header */
 .app-head {
@@ -226,6 +239,10 @@ main { flex: 1; overflow-y: auto; padding: 16px 16px 28px; overscroll-behavior: 
   width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--bg); font-size: 16px; font-weight: 400; color: var(--ink);
 }
+.field textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); font-size: 15px; font-weight: 400; line-height: 1.4; color: var(--ink);
+}
 
 /* Settings */
 .set-group { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -248,6 +265,7 @@ main { flex: 1; overflow-y: auto; padding: 16px 16px 28px; overscroll-behavior: 
 #permNote { display: grid; gap: 8px; justify-items: start; }
 #notifyNote a { color: var(--accent); font-weight: 600; }
 #fCode { text-transform: uppercase; font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .02em; }
+#fCode.free { text-transform: none; }
 .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .course-name { margin: -4px 0 0; font-size: 14px; font-weight: 600; }
 .suggest { margin: -6px 0 0; padding: 4px; list-style: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }

@@ -146,7 +146,8 @@ public class MainActivity extends Activity {
         applyTheme(getSharedPreferences("ui", MODE_PRIVATE).getString(PREF_THEME, "system"));
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
-            webView.loadUrl(SITE);
+            // Personal build: always open the copy bundled in the APK, which has the gym and prayer changes.
+            webView.loadUrl(BUNDLED);
         }
     }
 
