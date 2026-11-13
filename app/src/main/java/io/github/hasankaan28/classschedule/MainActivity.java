@@ -28,7 +28,8 @@ import android.widget.FrameLayout;
  * The site caches itself for offline use; on a first launch with no internet the copy bundled in assets/ opens.
  */
 public class MainActivity extends Activity {
-    private static final String SITE = "https://hasankaan28.github.io/class-schedule/";
+    // Personal build: the personal fork's GitHub Pages site, so pushes to its main branch reach the phone without a new APK.
+    private static final String SITE = "https://46bekir70-cloud.github.io/class-schedule/";
     private static final String BUNDLED = "file:///android_asset/index.html";
     private static final int REQUEST_NOTIFICATIONS = 7;
     private static final String PREF_THEME = "theme";
@@ -146,8 +147,8 @@ public class MainActivity extends Activity {
         applyTheme(getSharedPreferences("ui", MODE_PRIVATE).getString(PREF_THEME, "system"));
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
-            // Personal build: always open the copy bundled in the APK, which has the gym and prayer changes.
-            webView.loadUrl(BUNDLED);
+            // The personal site has the gym and prayer changes too; with no internet the bundled copy opens (onReceivedError).
+            webView.loadUrl(SITE);
         }
     }
 
