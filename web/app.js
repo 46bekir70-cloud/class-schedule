@@ -242,7 +242,7 @@
     hint.hidden = !(state.followToday && !shownDays().includes(day));
     hint.textContent = t.weekendHint;
     if (!list.length) {
-      $('timeline').innerHTML = `<li class="empty">${t.noClasses}</li>`;
+      $('timeline').innerHTML = `<li class="empty with-art">${art('free-day.webp', 720, 490)}${t.noClasses}</li>`;
       return;
     }
     $('timeline').innerHTML = list.map((c, i) => {
@@ -259,6 +259,11 @@
           ${doneButton(c)}
         </li>`;
     }).join('');
+  }
+
+  // Empty-state illustration (web/img, generated with Google Flow); decorative, so no alt text.
+  function art(file, w, h) {
+    return `<img class="art" src="img/${file}" width="${w}" height="${h}" alt="" loading="lazy">`;
   }
 
   function renderToday() {
@@ -669,7 +674,9 @@
       const message = quiz.status === 'error' || (quiz.status === 'loading' && !quiz.fetchedAt) ? ''
         : !mineScope ? t.noQuizzesAll
         : state.classes.length ? t.noQuizzesMine : t.noClassesForQuizzes;
-      html += message ? `<p class="empty">${message}</p>` : '';
+      html += !message ? ''
+        : message === t.noClassesForQuizzes ? `<p class="empty">${message}</p>`
+        : `<p class="empty with-art">${art('no-quizzes.webp', 720, 585)}${message}</p>`;
     }
     // One heading per day, and one per week for the quizzes that only name a week.
     const groups = [];
@@ -828,7 +835,7 @@
     if (mine) {
       const { list, missing } = myExams();
       if (!state.classes.length) html = `<p class="empty">${t.noClassesForExams}</p>`;
-      else if (!list.length) html = `<p class="empty">${t.noExamsMine}</p>`;
+      else if (!list.length) html = `<p class="empty with-art">${art('no-midterms.webp', 720, 547)}${t.noExamsMine}</p>`;
       else {
         const clashes = examClashes(list);
         if (clashes.length) html += `<p class="warn">${esc(t.examClash(clashes.join(', ')))}</p>`;
@@ -857,7 +864,9 @@
     if (!exams) return false;
     const { list } = myExams();
     $('summary').textContent = t.examWeekHint(examRange());
-    $('examWeek').innerHTML = list.length ? examGridHtml(list) : `<p class="empty">${state.classes.length ? t.noExamsMine : t.noClassesForExams}</p>`;
+    $('examWeek').innerHTML = list.length ? examGridHtml(list)
+      : state.classes.length ? `<p class="empty with-art">${art('no-midterms.webp', 720, 547)}${t.noExamsMine}</p>`
+      : `<p class="empty">${t.noClassesForExams}</p>`;
     return true;
   }
 
