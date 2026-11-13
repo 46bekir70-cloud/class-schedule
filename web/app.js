@@ -3,6 +3,7 @@
   // Starts with the copy bundled in the APK; refreshCatalog() swaps in the nightly eCampus data when online.
   let CATALOG = window.COURSE_DATA || { courses: {}, staff: {} };
   const LIVE_DATA = 'https://hasankaan28.github.io/class-schedule/data/courses.js';
+  const LIVE_MIDTERMS = 'https://hasankaan28.github.io/class-schedule/data/midterms.js';
   const I18N = window.I18N;
   const PALETTE_SIZE = 8;
   const FORM_DAYS = [1, 2, 3, 4, 5, 6];
@@ -52,6 +53,7 @@
     })(),
     examScope: store.get('examScope') === 'all' ? 'all' : 'mine',
     weekMode: null, // null: midterm week during the midterms, the class grid otherwise
+    gymLog: loadGymLog(),
     tab: 'today',
     day: 1,
     followToday: true,
@@ -93,6 +95,15 @@
     store.set('classes', JSON.stringify(out));
     store.set('migrated', '2');
     return out;
+  }
+  // Gym days marked as done: { "2026-11-09": ["s4"] } (date of that session -> ids of the gym entries).
+  function loadGymLog() {
+    try {
+      const log = JSON.parse(store.get('gymLog') || '{}');
+      return log && typeof log === 'object' && !Array.isArray(log) ? log : {};
+    } catch (e) {
+      return {};
+    }
   }
   function loadSettings() {
     try {
@@ -245,6 +256,7 @@
         <li class="item ${altCls(c)} ${colorClass(c.code)}${past ? ' past' : ''}${live ? ' live' : ''}">
           <div class="time"><b>${c.s}</b><span>${c.e}</span></div>
           ${classLink(c, 'card', inner)}
+          ${doneButton(c)}
         </li>`;
     }).join('');
   }
@@ -256,15 +268,76 @@
     renderExamToday();
     if (empty || exams) {
       // No classes during midterm week: Today shows the midterms card and quizzes instead.
+      if (empty) $('streak').hidden = true; else renderStreak();
       $('status').hidden = true;
       $('dayHint').hidden = true;
       if (empty) $('quizSoon').hidden = true; else renderQuizSoon();
       return;
     }
     renderStatus();
+    renderStreak();
     renderQuizSoon();
     renderChips();
     renderTimeline();
+  }
+
+  // --- Gym streak ----------------------------------------------------------------------------
+  // A week counts when every gym day in the timetable was marked done. The current week joins the
+  // streak once it is complete, and does not break it while it is still in progress.
+
+  const gyms = () => state.classes.filter(c => c.t === 'gym');
+  const thisMonday = () => { const n = nowDate(); return addDays(n, -((n.getDay() + 6) % 7)); };
+  const sessionDate = (monday, c) => isoDate(addDays(monday, c.d - 1));
+  const isDone = (c, date) => (state.gymLog[date] || []).includes(c.id);
+
+  function weekProgress(monday) {
+    const list = gyms();
+    return { done: list.filter(c => isDone(c, sessionDate(monday, c))).length, total: list.length };
+  }
+
+  // Weeks whose Monday to Friday all fall in the midterm period are skipped: no gym is expected then.
+  const examWeek = monday => !!MIDTERMS && isoDate(monday) >= MIDTERMS.from && isoDate(addDays(monday, 4)) <= MIDTERMS.to;
+
+  function streakWeeks() {
+    if (!gyms().length) return 0;
+    const monday = thisMonday();
+    const full = m => { const w = weekProgress(m); return w.done >= w.total; };
+    let weeks = !examWeek(monday) && full(monday) ? 1 : 0;
+    for (let k = 1; k <= 520; k++) {
+      const m = addDays(monday, -7 * k);
+      if (examWeek(m)) continue;
+      if (!full(m)) break;
+      weeks++;
+    }
+    return weeks;
+  }
+
+  // "Done" button under a gym card, for this week's sessions up to today.
+  function doneButton(c) {
+    if (c.t !== 'gym') return '';
+    const date = sessionDate(thisMonday(), c);
+    if (date > isoDate(nowDate())) return '';
+    const done = isDone(c, date), t = T();
+    return `<button type="button" class="done-btn${done ? ' is-done' : ''}" data-done="${esc(c.id)}" data-date="${date}" aria-pressed="${done}">${done ? t.gymDone : t.gymMark}</button>`;
+  }
+
+  function toggleDone(id, date) {
+    const list = state.gymLog[date] || [];
+    state.gymLog[date] = list.includes(id) ? list.filter(x => x !== id) : list.concat(id);
+    if (!state.gymLog[date].length) delete state.gymLog[date];
+    store.set('gymLog', JSON.stringify(state.gymLog));
+    renderToday();
+    renderWeek();
+  }
+
+  function renderStreak() {
+    const t = T(), el = $('streak'), list = gyms();
+    el.hidden = !list.length;
+    if (!list.length) return;
+    const monday = thisMonday(), w = weekProgress(monday), weeks = streakWeeks();
+    const dots = sorted(list).map(c => `<i class="${isDone(c, sessionDate(monday, c)) ? 'on' : ''}" title="${esc(nameOf(c))}"></i>`).join('');
+    el.innerHTML = `<div class="streak-num"><b>${weeks}</b><span>${t.streakWeeks(weeks)}</span></div>
+      <div class="streak-week"><span>${examWeek(monday) ? t.streakExamWeek : t.streakThisWeek(w.done, w.total)}</span>${examWeek(monday) ? '' : `<span class="streak-dots">${dots}</span>`}</div>`;
   }
 
   // --- Week -----------------------------------------------------------------------------------
@@ -297,7 +370,8 @@
       if (!list.length) html += `<span class="free">${t.free}</span>`;
       list.forEach(c => {
         const style = `top:calc(var(--slot) * ${(toMin(c.s) - start) / 10}); height:calc(var(--slot) * ${dur(c) / 10} - 2px)`;
-        const inner = `<span class="code">${esc(c.code)}</span>${c.room ? `<span class="room">${esc(c.room)}</span>` : ''}`;
+        const tick = c.t === 'gym' && isDone(c, sessionDate(thisMonday(), c)) ? ' ✓' : '';
+        const inner = `<span class="code">${esc(c.code)}${tick}</span>${c.room ? `<span class="room">${esc(c.room)}</span>` : ''}`;
         html += classLink(c, `blk ${altCls(c)} ${colorClass(c.code)}`, inner, style);
       });
       if (d === day && min >= start && min <= end) {
@@ -636,8 +710,10 @@
   // --- Midterms -------------------------------------------------------------------------------
   // The official IUS midterm schedule (data/midterms.js). No classes are held on the midterm days.
 
-  const MIDTERMS = window.MIDTERMS || null;
-  const EXAMS = MIDTERMS ? MIDTERMS.exams.map(([course, date, s, e, n, note]) => ({ course, date, s, e, n, note })) : [];
+  // Bundled copy first; refreshLiveData() swaps in the original site's newer file (rooms are added there later).
+  const examRows = m => (m && Array.isArray(m.exams) ? m.exams.map(([course, date, s, e, n, note]) => ({ course, date, s, e, n, note })) : []);
+  let MIDTERMS = window.MIDTERMS || null;
+  let EXAMS = examRows(MIDTERMS);
   const EXAM_TAB_DAYS = 3; // the Midterms tab stays this many days after the last midterm
   const EXAM_SOON_DAYS = 14; // the Today card appears this many days before the first midterm
 
@@ -647,12 +723,12 @@
   const examPeriod = () => !!MIDTERMS && daysAway(MIDTERMS.from) <= 0 && daysAway(MIDTERMS.to) >= 0;
   const examTabShown = () => !!MIDTERMS && daysAway(MIDTERMS.to) >= -EXAM_TAB_DAYS;
   const examDone = x => daysAway(x.date) < 0 || (daysAway(x.date) === 0 && toMin(x.e) <= clock().min);
-  const examColor = course => { const c = state.classes.find(k => baseCode(k.code) === course); return c ? colorClass(c.code) : ''; };
+  const examColor = course => { const c = courses().find(k => baseCode(k.code) === course); return c ? colorClass(c.code) : ''; };
   const examDate = (date, opts) => new Intl.DateTimeFormat(T().locale, opts || { weekday: 'long', day: 'numeric', month: 'long' }).format(dateOf(date));
 
   // The student's midterms, and their courses that have none in the schedule.
   function myExams() {
-    const codes = [...new Set(state.classes.map(c => baseCode(c.code)))];
+    const codes = [...new Set(courses().map(c => baseCode(c.code)))];
     const list = EXAMS.filter(x => codes.includes(x.course)).sort(examSort);
     const missing = codes.filter(code => !list.some(x => x.course === code)).sort();
     return { list, missing };
@@ -1178,6 +1254,7 @@
     const el = e.target.closest('button');
     if (!el) return;
     const d = el.dataset;
+    if (d.done) return toggleDone(d.done, d.date);
     if ('openSettings' in d) { renderSettings(); return showDialog($('settings')); }
     if (el.id === 'settingsClose') return closeDialog($('settings'));
     if (el.id === 'openNotifySettings') return window.AndroidNotify && window.AndroidNotify.openSettings();
@@ -1284,12 +1361,30 @@
     document.head.appendChild(script);
   }
 
+  // Same for the midterm schedule: the original site adds rooms and fixes after the APK was built.
+  function refreshMidterms() {
+    const bundled = MIDTERMS;
+    const script = document.createElement('script');
+    script.src = `${LIVE_MIDTERMS}?t=${Date.now()}`;
+    script.onload = () => {
+      const fresh = window.MIDTERMS;
+      script.remove();
+      if (!fresh || fresh === bundled || !Array.isArray(fresh.exams)) return;
+      MIDTERMS = fresh;
+      EXAMS = examRows(fresh);
+      renderAll();
+    };
+    script.onerror = () => script.remove();
+    document.head.appendChild(script);
+  }
+
   renderStaffList();
   applyTheme();
   setLang(state.lang);
   setTab('today');
   loadQuizzes(false);
   refreshCatalog();
+  refreshMidterms();
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* the app still works without offline caching */ });
